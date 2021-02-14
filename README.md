@@ -1,2 +1,2 @@
-# telebot3D
+# telbot3D
 
