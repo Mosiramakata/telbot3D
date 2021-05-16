@@ -52,26 +52,21 @@ class Alpaca(object):
         if self.current_order is not None:
             self.api.cancel_order(self.current_order.id)
 
-        delta = target - self.position
-        if delta == 0:
-            return
-        print(f'Proccessing the order for {target} shares')
+        symbol_bars = self.api.get_barset(self.symbol, 'minute', 1).df.iloc[0]
+        symbol_price = symbol_bars[self.symbol]['close']
 
-        if delta > 0:
-            buy_quantity = delta
-            if self.position < 0:
-                buy_quantity = min(abs(self.position), buy_quantity)
-            print(f'Buying {buy_quantity} shares')
-            self.current_order = self.api.submit_order(self.symbol, buy_quantity, 'buy', 'limit', 'day',
-                                                       self.last_price)
-
-        elif delta < 0:
-            sell_quantity = delta
-            if self.position > 0:
-                sell_quantity = min(abs(self.position), sell_quantity)
-            print(f'Selling {sell_quantity} shares')
-            self.current_order = self.api.submit_order(self.symbol, sell_quantity, 'sell', 'limit', 'day',
-                                                       self.last_price)
+        # We could buy a position and add a stop-loss and a take-profit of 5 %
+        self.api.submit_order(
+            symbol=self.symbol,
+            qty=1,
+            side='buy',
+            type='market',
+            time_in_force='gtc',
+            order_class='bracket',
+            stop_loss={'stop_price': symbol_price * 0.95,
+                       'limit_price': symbol_price * 0.94},
+            take_profit={'limit_price': symbol_price * 1.05}
+        )
 
 
 def main():
