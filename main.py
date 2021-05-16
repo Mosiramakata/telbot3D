@@ -15,14 +15,10 @@ main_markup = types.ReplyKeyboardMarkup(row_width=1)
 start_markup = types.ReplyKeyboardMarkup(row_width=1)
 
 shares_movenment_button = types.KeyboardButton('Изменение акций')
-time_interval_button = types.KeyboardButton('Ввести временной интервал')
-account_button = types.KeyboardButton('Ввести данные аккаунта')
+account_button = types.KeyboardButton('Изменить данные аккаунта')
 buy_button = types.KeyboardButton('Купить акции')
 
-
-
-main_markup.add(shares_movenment_button, time_interval_button, buy_button, account_button)
-start_markup.add(account_button)
+main_markup.add(shares_movenment_button, buy_button, account_button)
 
 
 # Mokata:
@@ -42,6 +38,7 @@ class Alpaca(object):
         self.symbol = 'IVV'
         self.current_order = None
         self.last_price = 1
+        self.time_interval = 1
 
         try:
             self.position = int(self.api.get_position(self.symbol).qty)
@@ -79,6 +76,11 @@ class Alpaca(object):
 
 def main():
     pass
+    # active_assets = alp.api.list_assets(status='active')
+    # # Filter the assets down to just those on NASDAQ.
+    # nasdaq_assets = [a for a in active_assets if a.exchange == 'NASDAQ']
+    # print(nasdaq_assets)
+    # pass
     # alpaca_main()
 
 
@@ -124,27 +126,43 @@ def check_market():
     ))
 
 
-def share_movenment(message=None):
-    barset = alp.api.get_barset('VVI', 'day', limit=interval)
-    aapl_bars = barset['VVI']
+def set_time_interval(message):
+    if message.text.isdigit() == False:
+        bot.send_message(message.chat.id, 'Ошибка ввода, попробуйте ещё раз')
+        return
+    global alp
+    alp.time_interval = int(message.text)
+    send = bot.send_message(message.chat.id, 'Введите название акции')
+    bot.register_next_step_handler(send, share_movenment)
+
+
+def share_movenment(message):
+    global alp
+    check = 0
+    txt = message.text.upper()
+    active_assets = alp.api.list_assets(status='active')
+    for i in active_assets:
+        if i.symbol == txt:
+            check = 1
+    if check == 0:
+        bot.send_message(message.chat.id, 'Ошибка ввода, попробуйте ещё раз')
+        return
+    if not check_tradability(txt):
+        bot.send_message(message.chat.id, 'Невозможно трейдить данные акции, попробуйте ещё раз')
+        return
+    else:
+        alp.set_symbol(txt)
+    barset = alp.api.get_barset(alp.symbol, 'day', limit=alp.time_interval)
+    aapl_bars = barset[alp.symbol]
     # f1 = open('doc_from_main.txt', 'w')
     # See how much AAPL moved in that timeframe.
     week_open = aapl_bars[0].o
     week_close = aapl_bars[-1].c
     percent_change = (week_close - week_open) / week_open * 100
-    print('VVI moved ' + str(percent_change) + '% over the last ' + str(interval) + ' days')  # .format(percent_change))
-    if message != None:
-        bot.send_message(message.chat.id,
-                         'VVI moved ' + str(percent_change) + '% over the last ' + str(interval) + ' days')
-
-
-def set_time_interval(message):
-    if message.text.isdigit() == False:
-        bot.send_message(message.chat.id, 'Ошибка ввода, попробуйте ещё раз')
-        return
-    global interval
-    interval = int(message.text)
-    bot.send_message(message.chat.id, 'Временной интервал: ' + message.text)
+    print(alp.symbol + ' moved ' + str(percent_change) + '% over the last ' + str(
+        alp.time_interval) + ' days')  # .format(percent_change))
+    bot.send_message(message.chat.id,
+                     'VVI moved ' + str(percent_change) + '% over the last ' + str(alp.time_interval) + ' days')
 
 
 def input_account_information(message):
@@ -155,11 +173,15 @@ def input_account_information(message):
     bot.send_message(message.chat.id, 'Данные аккаунта введены', reply_markup=main_markup)
 
 
-
-def check_symbol(message):
+def check_shares_symbol(message):
     global alp
+    check = 0
     txt = message.text.upper()
-    if len(txt) > 4:
+    active_assets = alp.api.list_assets(status='active')
+    for i in active_assets:
+        if i.symbol == txt:
+            check = 1
+    if check == 0:
         bot.send_message(message.chat.id, 'Ошибка ввода, попробуйте ещё раз')
         return
     if not check_tradability(txt):
@@ -177,7 +199,7 @@ def buy_shares(message):
         bot.send_message(message.chat.id, 'Ошибка ввода, попробуйте ещё раз')
         return
     alp.submit_order(int(message.text))
-    bot.send_message(message.chat.id, 'Совершена покупка акций в количестве ' + message.text)
+    bot.send_message(message.chat.id, 'Совершена покупка акций ' + alp.symbol + ' в количестве ' + message.text)
 
 
 @bot.message_handler(commands=['start'])
@@ -185,28 +207,22 @@ def send_welcome(message):
     bot.send_message(message.chat.id,
                      "Добро пожаловать, {0.first_name}! \nЯ - {1.first_name}, бот, который автотрейдер pog.".format(
                          message.from_user, bot.get_me()), reply_markup=start_markup)
+    send = bot.send_message(message.chat.id, 'Введите ключ и секретный ключ')
+    bot.register_next_step_handler(send, input_account_information)
 
 
 @bot.message_handler(content_types=['text'])
 def read_action_change(message):
     if message.chat.type == 'private':
         if message.text == 'Изменение акций' and alp != None:
-            share_movenment(message)
-        elif message.text == 'Ввести временной интервал' and alp != None:
             send = bot.send_message(message.chat.id, 'Введите временной интервал')
             bot.register_next_step_handler(send, set_time_interval)
-        elif message.text == 'Ввести данные аккаунта':
+        elif message.text == 'Изменить данные аккаунта':
             send = bot.send_message(message.chat.id, 'Введите ключ и секретный ключ')
             bot.register_next_step_handler(send, input_account_information)
-        elif message.text == 'Купить акции':
-            send = bot.send_message(message.chat.id, 'Введите название акций')
-            bot.register_next_step_handler(send, check_symbol)
-        elif message.text == 'Pricol':
-            send = bot.send_message(message.chat.id, 'Ржака')
-            bot.register_next_step_handler(send, check_available_tradesymbols)
-
-        # else:
-        #    bot.send_message(message.chat.id, 'Некоректный ввод, повторите попытку')
+        elif message.text == 'Купить акции' and alp != None:
+            send = bot.send_message(message.chat.id, 'Введите название акции')
+            bot.register_next_step_handler(send, check_shares_symbol)
 
 
 bot.polling()
