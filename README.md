@@ -2,6 +2,7 @@
 Multifunctional tradebot that can be used through telegamBOT (Waad'hu)
 ## setup
 1.Download files from repository
+
 2.Run setup.py
 ## How-to-start
 1.Run main.py
