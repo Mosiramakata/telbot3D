@@ -1,6 +1,8 @@
 import telebot
 from telebot import types
 import alpaca_trade_api as tradeip
+import time
+
 
 # from main import *
 
@@ -13,6 +15,7 @@ token = '1684905058:AAENIhHYwE1qVjIqWAFjSEMvLJtMxlJO1dg'
 bot = telebot.TeleBot(token)
 main_markup = types.ReplyKeyboardMarkup(row_width=1)
 start_markup = types.ReplyKeyboardMarkup(row_width=1)
+accounts = dict()
 
 check_market_button = types.KeyboardButton('Проверить работоспособность рынка')
 shares_movenment_button = types.KeyboardButton('Изменение акций')
@@ -70,8 +73,20 @@ class Alpaca(object):
             # take_profit={'limit_price': symbol_price * 1.05}
         )
 
+    def set_key_secret(self, key, secret_key):
+        self.key = key
+        self.secret = secret_key
+        self.api = tradeip.REST(base_url=self.alpaca_endpoint, key_id=self.key, secret_key=self.secret)
 
-def check_balance():
+
+def listener(messages):
+    for m in messages:
+        print(m.chat.id)
+        return int(m.chat.id)
+
+
+def check_balance(message):
+    alp.set_key_secret(accounts[message.chat.id][0],accounts[message.chat.id][1])
     account = alp.api.get_account()
     # Check our current balance vs. our balance at the last market close
     balance_change = float(account.equity) - float(account.last_equity)
@@ -119,6 +134,7 @@ def set_time_interval(message):
 
 def share_movenment(message):
     global alp
+    alp.set_key_secret(accounts[message.chat.id][0], accounts[message.chat.id][1])
     check = 0
     txt = message.text.upper()
     active_assets = alp.api.list_assets(status='active')
@@ -143,19 +159,21 @@ def share_movenment(message):
     print(alp.symbol + ' moved ' + str(percent_change) + '% over the last ' + str(
         alp.time_interval) + ' days')  # .format(percent_change))
     bot.send_message(message.chat.id,
-                     'VVI moved ' + str(percent_change) + '% over the last ' + str(alp.time_interval) + ' days')
+                     alp.symbol + ' moved ' + str(percent_change) + '% over the last ' + str(alp.time_interval) + ' days')
 
 
 def input_account_information(message):
     global alp
     key = message.text.split()[0]
     secret_key = message.text.split()[1]
+    accounts.setdefault(message.chat.id, [key, secret_key])
     alp = Alpaca(key, secret_key)
     bot.send_message(message.chat.id, 'Данные аккаунта введены', reply_markup=main_markup)
 
 
 def check_shares_for_sale_symbol(message):
     global alp
+    alp.set_key_secret(accounts[message.chat.id][0], accounts[message.chat.id][1])
     check = 0
     txt = message.text.upper()
     active_assets = alp.api.list_assets(status='active')
@@ -175,6 +193,7 @@ def check_shares_for_sale_symbol(message):
 
 
 def buy_shares(message):
+    alp.set_key_secret(accounts[message.chat.id][0], accounts[message.chat.id][1])
     amount = message.text
     if amount.isdigit() == False:
         bot.send_message(message.chat.id, 'Ошибка ввода, попробуйте ещё раз')
@@ -185,6 +204,7 @@ def buy_shares(message):
 
 def check_shares_to_buy_symbol(message):
     global alp
+    alp.set_key_secret(accounts[message.chat.id][0], accounts[message.chat.id][1])
     check = 0
     txt = message.text.upper()
     active_assets = alp.api.list_assets(status='active')
@@ -204,6 +224,7 @@ def check_shares_to_buy_symbol(message):
 
 
 def sell_shares(message):
+    alp.set_key_secret(accounts[message.chat.id][0], accounts[message.chat.id][1])
     amount = message.text
     if amount.isdigit() == False:
         bot.send_message(message.chat.id, 'Ошибка ввода, попробуйте ещё раз')
@@ -241,4 +262,12 @@ def read_action_change(message):
             bot.register_next_step_handler(send, check_shares_to_buy_symbol)
 
 
-bot.polling()
+while True:
+    try:
+        bot.polling(none_stop=True)
+
+    except Exception as e:
+        print(e)  # или просто print(e) если у вас логгера нет,
+        # или import traceback; traceback.print_exc() для печати полной инфы
+        time.sleep(15)
+
