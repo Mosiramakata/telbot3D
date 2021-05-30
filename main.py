@@ -3,7 +3,6 @@ from telebot import types
 import alpaca_trade_api as tradeip
 import time
 
-
 # from main import *
 
 interval = 3
@@ -25,14 +24,6 @@ sell_button = types.KeyboardButton('Продать акции')
 
 main_markup.add(check_market_button, shares_movenment_button, buy_button, sell_button, account_button)
 
-
-# Mokata:
-#   key = 'PK1LTOY8SGXG325T26D0'
-#   secret_key = 'fnPEzhro2BoChsnqwW2bWaN6Lv4w8EnBLCv7QjCK'
-
-# Brom:
-#   key = 'PK0FYUD4HCLQSH46T79L'
-#   secret_key = 'r7mGbmDLRs6MuNTARZVhr9tsv8jUf4L65rIwYFv6'
 
 class Alpaca(object):
     def __init__(self, key, secret):
@@ -86,11 +77,11 @@ def listener(messages):
 
 
 def check_balance(message):
-    alp.set_key_secret(accounts[message.chat.id][0],accounts[message.chat.id][1])
+    alp.set_key_secret(accounts[message.chat.id][0], accounts[message.chat.id][1])
     account = alp.api.get_account()
     # Check our current balance vs. our balance at the last market close
-    balance_change = float(account.equity) - float(account.last_equity)
-    print(f'Today\'s portfolio balance change: ${balance_change}')
+    balance = account.equity
+    print(f'Today\'s balance: ${balance}')
 
 
 def check_tradability(symbol='TON'):
@@ -159,16 +150,23 @@ def share_movenment(message):
     print(alp.symbol + ' moved ' + str(percent_change) + '% over the last ' + str(
         alp.time_interval) + ' days')  # .format(percent_change))
     bot.send_message(message.chat.id,
-                     alp.symbol + ' moved ' + str(percent_change) + '% over the last ' + str(alp.time_interval) + ' days')
+                     alp.symbol + ' moved ' + str(percent_change) + '% over the last ' + str(
+                         alp.time_interval) + ' days')
 
 
-def input_account_information(message):
-    global alp
-    key = message.text.split()[0]
-    secret_key = message.text.split()[1]
+def input_key(message):
+    global alp, key
+    key = message.text
+    send = bot.send_message(message.chat.id, 'Введите секретный ключ')
+    bot.register_next_step_handler(send, input_secret_key)
+
+
+def input_secret_key(message):
+    global alp, secret_key
+    secret_key = message.text
     accounts.setdefault(message.chat.id, [key, secret_key])
     alp = Alpaca(key, secret_key)
-    bot.send_message(message.chat.id, 'Данные аккаунта введены', reply_markup=main_markup)
+    bot.send_message(message.chat.id, 'Данные аккаунта введены')
 
 
 def check_shares_for_sale_symbol(message):
@@ -238,28 +236,30 @@ def send_welcome(message):
     bot.send_message(message.chat.id,
                      "Добро пожаловать, {0.first_name}! \nЯ - {1.first_name}, бот, который автотрейдер pog.".format(
                          message.from_user, bot.get_me()), reply_markup=start_markup)
-    send = bot.send_message(message.chat.id, 'Введите ключ и секретный ключ')
-    bot.register_next_step_handler(send, input_account_information)
+    send = bot.send_message(message.chat.id, 'Введите ключ')
+    bot.register_next_step_handler(send, input_key)
 
 
 @bot.message_handler(content_types=['text'])
 def read_action_change(message):
-    if message.chat.type == 'private':
-        if message.text == 'Проверить работоспособность рынка' and alp != None:
+    if message.chat.type == 'private' and alp != None:
+        if message.text == 'Проверить работоспособность рынка':
             clock = alp.api.get_clock()
             bot.send_message(message.chat.id, 'The market is {}'.format('open.' if clock.is_open else 'closed.'))
-        elif message.text == 'Изменение акций' and alp != None:
+        elif message.text == 'Изменение акций':
             send = bot.send_message(message.chat.id, 'Введите временной интервал')
             bot.register_next_step_handler(send, set_time_interval)
         elif message.text == 'Изменить данные аккаунта':
-            send = bot.send_message(message.chat.id, 'Введите ключ и секретный ключ')
-            bot.register_next_step_handler(send, input_account_information)
-        elif message.text == 'Купить акции' and alp != None:
+            send = bot.send_message(message.chat.id, 'Введите ключ')
+            bot.register_next_step_handler(send, input_key)
+        elif message.text == 'Купить акции':
             send = bot.send_message(message.chat.id, 'Введите название акции')
             bot.register_next_step_handler(send, check_shares_for_sale_symbol)
-        elif message.text == 'Продать акции' and alp != None:
+        elif message.text == 'Продать акции':
             send = bot.send_message(message.chat.id, 'Введите название акции')
             bot.register_next_step_handler(send, check_shares_to_buy_symbol)
+        elif message.text == 'Узнать баланс':
+            check_balance()
 
 
 while True:
@@ -270,4 +270,3 @@ while True:
         print(e)  # или просто print(e) если у вас логгера нет,
         # или import traceback; traceback.print_exc() для печати полной инфы
         time.sleep(15)
-
