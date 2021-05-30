@@ -9,16 +9,18 @@ key = ''
 secret_key = ''
 alp = None
 
-token = '1684905058:AAFSLUrt-U0GZaHs3YrCBcVajsSYX7Pohsc'
+token = '1684905058:AAENIhHYwE1qVjIqWAFjSEMvLJtMxlJO1dg'
 bot = telebot.TeleBot(token)
 main_markup = types.ReplyKeyboardMarkup(row_width=1)
 start_markup = types.ReplyKeyboardMarkup(row_width=1)
 
+check_market_button = types.KeyboardButton('Проверить работоспособность рынка')
 shares_movenment_button = types.KeyboardButton('Изменение акций')
 account_button = types.KeyboardButton('Изменить данные аккаунта')
 buy_button = types.KeyboardButton('Купить акции')
+sell_button = types.KeyboardButton('Продать акции')
 
-main_markup.add(shares_movenment_button, buy_button, account_button)
+main_markup.add(check_market_button, shares_movenment_button, buy_button, sell_button, account_button)
 
 
 # Mokata:
@@ -26,18 +28,18 @@ main_markup.add(shares_movenment_button, buy_button, account_button)
 #   secret_key = 'fnPEzhro2BoChsnqwW2bWaN6Lv4w8EnBLCv7QjCK'
 
 # Brom:
-#   key = 'PK1FLFQHG1UFHPEY69SR'
-#   secret_key = 'mFBb5BDpo2jkuxHhB4IA4jCkrIrZuMLwWPVY5ntY'
+#   key = 'PK0FYUD4HCLQSH46T79L'
+#   secret_key = 'r7mGbmDLRs6MuNTARZVhr9tsv8jUf4L65rIwYFv6'
 
 class Alpaca(object):
     def __init__(self, key, secret):
         self.key = key
         self.secret = secret
         self.alpaca_endpoint = 'https://paper-api.alpaca.markets'
-        self.api = tradeip.REST(self.key, self.secret, self.alpaca_endpoint)
+        self.api = tradeip.REST(base_url=self.alpaca_endpoint, key_id=self.key, secret_key=self.secret)
         self.symbol = 'IVV'
-        self.current_order = None
-        self.last_price = 1
+        # self.current_order = None
+        # self.last_price = 1
         self.time_interval = 1
 
         try:
@@ -48,41 +50,25 @@ class Alpaca(object):
     def set_symbol(self, symbol):
         self.symbol = symbol
 
-    def submit_order(self, target):
-        if self.current_order is not None:
-            self.api.cancel_order(self.current_order.id)
+    def submit_order(self, target, act):
+        # if self.current_order is not None:
+        #    self.api.cancel_order(self.current_order.id)
 
-        symbol_bars = self.api.get_barset(self.symbol, 'minute', 1).df.iloc[0]
-        symbol_price = symbol_bars[self.symbol]['close']
+        # symbol_bars = self.api.get_barset(self.symbol, 'minute', 1).df.iloc[0]
+        # symbol_price = symbol_bars[self.symbol]['close']
 
-        # We could buy a position and add a stop-loss and a take-profit of 5 %
         self.api.submit_order(
             symbol=self.symbol,
-            qty=1,
-            side='buy',
+            qty=target,
+            side=act,
             type='market',
-            time_in_force='gtc',
-            order_class='bracket',
-            stop_loss={'stop_price': symbol_price * 0.95,
-                       'limit_price': symbol_price * 0.94},
-            take_profit={'limit_price': symbol_price * 1.05}
+            time_in_force='gtc'
+            # ,
+            # order_class='bracket',
+            # stop_loss={'stop_price': symbol_price * 0.95,
+            #            'limit_price': symbol_price * 0.94},
+            # take_profit={'limit_price': symbol_price * 1.05}
         )
-
-
-def main():
-    pass
-    # active_assets = alp.api.list_assets(status='active')
-    # # Filter the assets down to just those on NASDAQ.
-    # nasdaq_assets = [a for a in active_assets if a.exchange == 'NASDAQ']
-    # print(nasdaq_assets)
-    # pass
-    # alpaca_main()
-
-
-def alpaca_main():
-    check_balance()
-    check_market()
-    share_movenment()
 
 
 def check_balance():
@@ -168,7 +154,7 @@ def input_account_information(message):
     bot.send_message(message.chat.id, 'Данные аккаунта введены', reply_markup=main_markup)
 
 
-def check_shares_symbol(message):
+def check_shares_for_sale_symbol(message):
     global alp
     check = 0
     txt = message.text.upper()
@@ -193,8 +179,37 @@ def buy_shares(message):
     if amount.isdigit() == False:
         bot.send_message(message.chat.id, 'Ошибка ввода, попробуйте ещё раз')
         return
-    alp.submit_order(int(message.text))
+    alp.submit_order(int(message.text), 'buy')
     bot.send_message(message.chat.id, 'Совершена покупка акций ' + alp.symbol + ' в количестве ' + message.text)
+
+
+def check_shares_to_buy_symbol(message):
+    global alp
+    check = 0
+    txt = message.text.upper()
+    active_assets = alp.api.list_assets(status='active')
+    for i in active_assets:
+        if i.symbol == txt:
+            check = 1
+    if check == 0:
+        bot.send_message(message.chat.id, 'Ошибка ввода, попробуйте ещё раз')
+        return
+    if not check_tradability(txt):
+        bot.send_message(message.chat.id, 'Невозможно трейдить данные акции, попробуйте ещё раз')
+        return
+    else:
+        alp.set_symbol(txt)
+        send = bot.send_message(message.chat.id, 'Введите колличество акций для продажи')
+        bot.register_next_step_handler(send, sell_shares)
+
+
+def sell_shares(message):
+    amount = message.text
+    if amount.isdigit() == False:
+        bot.send_message(message.chat.id, 'Ошибка ввода, попробуйте ещё раз')
+        return
+    alp.submit_order(int(message.text), 'sell')
+    bot.send_message(message.chat.id, 'Совершена продажа акций ' + alp.symbol + ' в количестве ' + message.text)
 
 
 @bot.message_handler(commands=['start'])
@@ -209,7 +224,10 @@ def send_welcome(message):
 @bot.message_handler(content_types=['text'])
 def read_action_change(message):
     if message.chat.type == 'private':
-        if message.text == 'Изменение акций' and alp != None:
+        if message.text == 'Проверить работоспособность рынка' and alp != None:
+            clock = alp.api.get_clock()
+            bot.send_message(message.chat.id, 'The market is {}'.format('open.' if clock.is_open else 'closed.'))
+        elif message.text == 'Изменение акций' and alp != None:
             send = bot.send_message(message.chat.id, 'Введите временной интервал')
             bot.register_next_step_handler(send, set_time_interval)
         elif message.text == 'Изменить данные аккаунта':
@@ -217,10 +235,10 @@ def read_action_change(message):
             bot.register_next_step_handler(send, input_account_information)
         elif message.text == 'Купить акции' and alp != None:
             send = bot.send_message(message.chat.id, 'Введите название акции')
-            bot.register_next_step_handler(send, check_shares_symbol)
+            bot.register_next_step_handler(send, check_shares_for_sale_symbol)
+        elif message.text == 'Продать акции' and alp != None:
+            send = bot.send_message(message.chat.id, 'Введите название акции')
+            bot.register_next_step_handler(send, check_shares_to_buy_symbol)
 
 
 bot.polling()
-
-if __name__ == '__main__':
-    main()
